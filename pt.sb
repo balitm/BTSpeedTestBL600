@@ -1,0 +1,403 @@
+'//*****************************************************************************
+'// Paragon (c) 2013, 2014
+'//
+'//*****************************************************************************
+
+'//*****************************************************************************
+'// Definitions
+'//*****************************************************************************
+
+'//Set this to 0 to disable all debugging messages
+#define ENABLE_DEBUG_PRINTS                  1
+
+#define DEVICENAME                           "Sentra"
+#define DEVICENAME_WRITABLE                  1
+#define APPEARANCE                           BLE_APPEARANCE_GENERIC_TAG
+#define MANF_NAME                            "Paragon International"
+#define MODELSTR                             "BL600"
+#define SERIALNUM                            "12345"
+#define HWREV                                "HwRev1.0"
+#define SWREV                                "SwRev0.1"
+
+'//Tx Power for the TX Service (Proximity Profile)
+#define TX_POWER_LEVEL                       4
+
+'//-------------------------------------------
+'//TODO - Uncomment one of the following three lines
+'//TODO #define SYSID                                "\01\02\03\04\05\06\07\08"
+'//#define SYSID                                "@"
+#define SYSID                                ""
+'//-------------------------------------------
+
+'//-------------------------------------------
+'//TODO - Uncomment one of the following two lines
+'//#define REGLIST                              "\DE\AD\C0\DE"
+#define REGLIST                              ""
+'//-------------------------------------------
+
+'//-------------------------------------------
+'//TODO - Uncomment one of the following two lines
+'//#define PNPID                                "\01\04\BF\03\20\00\01"
+#define PNPID                                ""
+'//-------------------------------------------
+
+
+'// Minimum acceptable connection interval (0.5 seconds)
+#define MIN_CONN_INTERVAL                    80000
+'// Maximum acceptable connection interval (1 second).
+#define MAX_CONN_INTERVAL                    100000
+'// Slave latency -- number of conn events that can be missed
+'// Effective Conn interval will be (SLAVE_LATENCY+1)*ACTUAL_CONN_INTERVAL
+#define SLAVE_LATENCY                        2
+'// Connection supervisory timeout (4 seconds) - max 32 seconds
+#define CONN_SUP_TIMEOUT                     4000000
+'//DiscoverableMode, set to BLE_DISCOVERABILITY_xxx
+#define DISCOVERY_MODE                       BLE_DISCOVERABILITY_GENERAL
+#define MAX_DEVNAME_CHRS                     0
+'//Set Appearance advertise 0 to suppress
+#define ADV_APPEARANCE                       1
+'//Advertise interval
+#define ADV_INTERVAL_MS                      100
+#define ADV_INTERVAL_SLOW_MS                 2000
+'//Advertise timeout
+#define ADV_TIMEOUT_MS                       15000
+#define ADV_TIMEOUT_SLOW_MS                  45000
+
+'// Whitelist Policy in Adverts
+#define ADV_WHITELIST_FILTER_POLICY          ADV_FILTERPOLICY_ANY
+
+'//Minimum long term key size in octets
+#define MIN_LTK_SIZE                         8
+'//Maximum long term key size in octets
+#define MAX_LTK_SIZE                         16
+
+'// Set this to non-zero to enable notiy on batt service
+#define BATT_NOTIFY                          1
+'//#define BATT_INIT_LEVEL_PERC                 100
+
+'//This sets the pairing i/p capability using bonding
+#define PAIRING_IOCAPABILITY                 BLE_IOCAPABILITY_NONE
+
+'//Connection Update Negotiation paramters
+#define FIRST_CONN_PARAMS_UPDATE_DELAY       5000
+#define NEXT_CONN_PARAMS_UPDATE_DELAY        5000
+#define MAX_CONN_PARAMS_UPDATE_DELAY         15000
+
+'//*****************************************************************************
+'// Register Error Handler as early as possible
+'//*****************************************************************************
+sub HandlerOnErr()
+  if (ENABLE_DEBUG_PRINTS != 0) then
+    print "\n OnErr - ";GetLastError();"\n"
+  endif
+endsub
+onerror next HandlerOnErr
+
+'//*****************************************************************************
+'// Library Import
+'//*****************************************************************************
+#include "tlib\pt.common.sblib"
+#include "tlib\debugging.routines.sblib"
+'#include "tlib\pt.led.sblib"
+#include "lib\ble.sblib"
+
+#include "lib\fast.slow.advert.mngr.sblib"
+#include "lib\advert.report.manager.sblib"
+
+#include "lib\security.manager.sblib"
+#include "lib\device.information.service.sblib"
+#include "lib\tx.power.service.sblib"
+#include "tlib\pt.battery.sblib"
+
+#include "tlib\pt.sblib"
+
+'Add services as appropriate
+'#include "lib\immediate.alert.service.sblib"
+
+'//*****************************************************************************
+'// Debugging resource after libs
+'//*****************************************************************************
+
+'//=============================================================================
+'//=============================================================================
+sub DbgInfo(id as integer)
+  select id
+  case 0
+    DbgPrnAdvReport(adRpt$)
+  case 1
+    DbgPrnAdvReport(scRpt$)
+  case else
+  endselect
+endsub
+
+
+'//*****************************************************************************
+'// Global Variable Declarations
+'//*****************************************************************************
+
+dim stRsp$ as string        '//Uart rx data is stored here
+dim ok$,er$
+dim msg$
+dim advFlags                '//value for flags AD
+
+'//*****************************************************************************
+'// Initialisse Global Variable
+'//*****************************************************************************
+
+ok$      = "\nOK\r\n>"
+er$      = "\nERROR\r\n>"
+
+advFlags = DISCOVERY_MODE    '//can be changed via 'fg' command
+
+'//*****************************************************************************
+'// Function and Subroutine definitions
+'//*****************************************************************************
+
+'//=============================================================================
+'// This is called to start things off just before the waitevent at the end of
+'// the file
+'//=============================================================================
+sub OnStartup()
+  InitSecurityMngr(PAIRING_IOCAPABILITY, MIN_LTK_SIZE, MAX_LTK_SIZE)
+  InitDisService()
+
+  PTBatteryInit(BATT_NOTIFY)
+'  PTLedInit()
+  PTBLEInit()
+endsub
+
+
+'//=============================================================================
+'//=============================================================================
+sub UartRsp(rsp as integer)
+  dim rc
+  if rsp == 0 then
+    rc = UartWrite(ok$)
+  else
+    rc = UartWrite(er$)
+  endif
+endsub
+
+'//=============================================================================
+'//=============================================================================
+sub UartMsg(byref msg$ as string)
+  dim rc
+  rc = UartWrite(msg$)
+endsub
+
+
+'//=============================================================================
+'//=============================================================================
+function StartAds(adv as integer) as integer
+  dim rc
+  rc = StartAdverts(adv)
+  if rc == 0 then
+    DbgMsgVal("Start Adverts", adv)
+  else
+    DbgMsgVal("Start adverting failed when called with: ", adv)
+  endif
+endfunc rc
+
+'//=============================================================================
+'//=============================================================================
+function StopAds() as integer
+  dim rc
+  rc = StopAdverts()
+  if rc == 0 then
+    DbgMsg("Stop Adverts")
+  endif
+endfunc rc
+
+'//=============================================================================
+'//=============================================================================
+sub ShowConnParms(nCtx as integer)
+  dim rc
+  dim intrvl,sprvto,slat
+  rc= BleGetCurConnParms(nCtx,intrvl,sprvto,slat)
+  AssertResCode(rc,1240)
+  if rc==0 then
+    DbgMsgVal("Conn Interval",intrvl)
+    DbgMsgVal("Conn Supervision Timeout",sprvto)
+    DbgMsgVal("Conn Slave Latency",slat)
+  endif
+endsub
+
+
+'//=============================================================================
+'// Expecting to see XX=nnn\n\r  where nnn =1 to 2 digit decimal number
+'//=============================================================================
+function OnUartCmd(stData$, datalen) as integer
+  dim beg$
+  dim rc
+
+  DbgMsgVal(">>> input string: " + stData$ + ", length: ", datalen)
+
+  '//drop the terminating CR
+  datalen = datalen - 1
+  stData$ = left$(stData$, datalen)
+
+  if strlen(stData$) >= 3 then
+    beg$ = left$(stData$, 3)
+  else
+    beg$ = stData$
+  endif
+
+  if strcmp(beg$, "q") == 0 then
+    reset(0)
+    exitfunc 0
+
+  //---- battery test ----
+  elseif strcmp(beg$, "bl ") == 0 then
+    StrShiftLeft(stData$, 3)
+    rc = StrValDec(stData$)
+    rc = PTBatterySetLevel(rc)
+
+  //---- led test ----
+'  elseif strcmp(beg$, "l1") == 0 then
+'    PTLedOn()
+'  elseif strcmp(beg$, "l0") == 0 then
+'    PTLedOff()
+'  elseif strcmp(beg$, "l5") == 0 then
+'    PTLedMS(500)
+
+  //---- battery test ----
+  elseif strcmp(beg$, "e") == 0 then
+    rc = ReadPwrSupplyMv()
+    DbgMsgVal("Battery power in mV: ", rc)
+
+  //---- advertise test ----
+  elseif strcmp(beg$, "a1") == 0 then
+    beg$ = ""
+    rc = BleAdvertStart(0, beg$, 1285, 0, 0)
+    AssertResCode(rc, 20000)
+  elseif strcmp(beg$, "a0") == 0 then
+    rc = BleAdvertStop()
+    AssertResCode(rc, 20001)
+
+  else
+    rc = 1
+  endif
+
+  '// send a response back to the user
+  UartRsp(rc)
+endfunc 1
+
+
+
+'//*****************************************************************************
+'// Handler definitions
+'//*****************************************************************************
+
+'//=============================================================================
+'// This handler is called when there is a BLE message
+'//=============================================================================
+function HandlerBleMsg(byval nMsgId as integer, byval nCtx as integer) as integer
+  DbgMsgVal2("#### ---- BLE msg: ", nMsgId, nCtx)
+
+  '// Inform libraries
+  AdvMngrOnBleMsg(nMsgId, nCtx)
+  _PTBLEOnBleMsg(nMsgId, nCtx)
+
+  select nMsgId
+  case BLE_EVBLEMSGID_CONNECT
+    DbgMsgVal(" --- Connect : ", nCtx)
+    ShowConnParms(nCtx)
+
+  case BLE_EVBLEMSGID_DISCONNECT
+    DbgMsgVal(" --- Disconnect : ", nCtx)
+
+  case BLE_EVBLEMSGID_IMMEDIATE_ALERT_SERVICE_ALERT
+    DbgMsgVal("\n --- Immediate Alert Service Alert ", nCtx)
+    DbgMsg("\n")
+
+  case BLE_EVBLEMSGID_DISPLAY_PASSKEY
+    DbgMsgVal("Display Pairing Passkey ", nCtx)
+
+  case BLE_EVBLEMSGID_NEW_BOND
+    DbgMsg(" +++ New Bond")
+
+  case BLE_EVBLEMSGID_UPDATED_BOND
+    DbgMsg(" +++ Updated Bond")
+
+  case BLE_EVBLEMSGID_ENCRYPTED
+    DbgMsg(" +++ Encrypted Connection")
+
+  case BLE_EVBLEMSGID_CONN_TO_BONDED_MASTER
+    DbgMsgVal(" -- Conn to Bonded Master ", nCtx)
+
+  case BLE_EVBLEMSGID_AUTH_KEY_REQUEST
+    DbgMsgVal(" +++ Auth Key Request, type:", nCtx)
+
+  case BLE_EVBLEMSGID_CONN_PARMS_UPDATE
+    ShowConnParms(nCtx)
+
+  case BLE_EVBLEMSGID_CONN_PARMS_UPDATE_FAIL
+    DbgMsg(" ??? Conn Parm Negotiation FAILED")
+
+  case else
+    DbgMsgVal("Unknown Ble Msg", nMsgId)
+  endselect
+endfunc 1
+
+'//=============================================================================
+'// This handler is called when data has arrived at the serial port
+'//=============================================================================
+function HandlerUartRx() as integer
+  dim nMatch
+  dim stData$
+
+  nMatch = UartReadMatch(stRsp$, 13)
+  if nMatch != 0 then
+    stData$ = strsplitleft$(stRsp$, nMatch)
+    DbgMsgVal(">>> read string: " + stData$ + "match pos.: ", nMatch)
+    exitfunc OnUartCmd(stData$, nMatch)
+  endif
+endfunc 1
+
+'//=============================================================================
+'// This handler is called when data has arrived at the serial port
+'//=============================================================================
+function HandlerBlrAdvTimOut() as integer
+  dim rc
+
+  DbgMsgVal("Advert stopped via timeout, phase: ", advPhase)
+  if AdvMngrOnAdvTimeOut() == 0 then
+    if !(ptState & PT_STATE_GLOB_PAIRED) then
+      DbgMsg("Not paired yet, stop advertising.")
+      rc = StopAdverts()
+      exitfunc 1
+    else
+      rc = StartAdverts(-1)
+    endif
+  endif
+endfunc 1
+
+'//*****************************************************************************
+'// Equivalent to main() in C
+'//*****************************************************************************
+
+'//------------------------------------------------------------------------------
+'// Enable synchronous event handlers
+'//------------------------------------------------------------------------------
+OnEvent EVUARTRX           call HandlerUartRx
+OnEvent EVBLE_ADV_TIMEOUT  call HandlerBlrAdvTimOut
+OnEvent EVBLEMSG           call HandlerBleMsg
+
+'//------------------------------------------------------------------------------
+'// Initialise Services and then wait for events
+'//------------------------------------------------------------------------------
+'//Send user prompt for uart based command interface
+msg$="\n\r"
+UartMsg(msg$)
+
+'//Send an OK response
+UartRsp(0)
+
+OnStartup()
+dim rc
+rc = StartAds(-1)
+
+'//------------------------------------------------------------------------------
+'// Wait for a synchronous event.
+'//------------------------------------------------------------------------------
+WaitEvent

@@ -1,0 +1,97 @@
+'//*****************************************************************************
+'// Laird Technologies (c) 2013
+'//
+'// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+'// ######                                                                #######
+'// ######        Library File meant to be #included in files             #######
+'// ######                                                                #######
+'// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+'//
+'// This library contains contains the battery service manager and should be
+'// #included in your app
+'//
+'//*****************************************************************************
+
+'//*****************************************************************************
+'// Definitions
+'//*****************************************************************************
+#define _PT_BAT_READ_MS 5000
+#define _PT_BAT_MAX_MVOLT 3000
+
+
+'//*****************************************************************************
+'// Library Import
+'//*****************************************************************************
+
+'//*****************************************************************************
+'// Global Variable Declarations
+'//*****************************************************************************
+dim counter
+
+'//*****************************************************************************
+'// Initialise Global Variable
+'//*****************************************************************************
+counter = 0
+
+'//*****************************************************************************
+'// Function and Subroutine definitions
+'//*****************************************************************************
+
+'//=============================================================================
+function PTBatterySetLevel(byref batLvl as integer) as integer
+  dim rc : rc = BleSvcSetBattLevel(batLvl)
+  AssertResCode(rc, 2610)
+endfunc rc
+
+function _PTBatteryReadLevel() as integer
+  dim rc : rc = ReadPwrSupplyMv()
+'  DbgMsgVal("Battery level: ", rc)
+  rc = (rc * 100) / _PT_BAT_MAX_MVOLT
+'  DbgMsgVal("Battery level percentage: ", rc)
+
+  if rc < 0 then
+    rc = 0
+  elseif rc > 100 then
+    rc = 100
+  endif
+endfunc rc
+
+sub PTBatteryOn()
+  dim rc : rc = _PTBatteryReadLevel()
+  rc = PTBatterySetLevel(rc)
+  TimerStart(PT_TIMER_BATTERY, _PT_BAT_READ_MS, 1)
+endsub
+
+sub PTBatteryOff()
+  TimerCancel(PT_TIMER_BATTERY)
+endsub
+
+'//=============================================================================
+sub PTBatteryInit(byval fNfy as integer)
+  dim rc : rc = _PTBatteryReadLevel()
+
+  rc = BleSvcRegBattery(rc, fNfy)
+  AssertResCode(rc,2620)
+endsub
+
+
+'//*****************************************************************************
+'// Handler definitions
+'//*****************************************************************************
+function _PTBatteryTimer() as integer
+  dim rc : rc = _PTBatteryReadLevel()
+'  rc = counter % 100
+'  counter = counter + 1
+'  DbgMsgVal("setting battery level to: ", rc)
+  rc = PTBatterySetLevel(rc)
+  if (rc != 0) then
+    PTBatteryOff()
+  endif
+endfunc 1
+
+
+'//*****************************************************************************
+'// Other initialisations
+'//*****************************************************************************
+OnEvent EVTMR3 call _PTBatteryTimer
+
