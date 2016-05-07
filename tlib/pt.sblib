@@ -30,44 +30,9 @@
 
 #define PT_STATE_NONE              0x00
 #define PT_STATE_CONNECTED         0x01
-#define PT_STATE_CHECKED           0x02
-#define PT_STATE_NAMED             0x04
-#define PT_STATE_PAIRED            0x08
-#define PT_STATE_INDICATED         0x10
-#define PT_STATE_STARTED           0x20
-#define PT_STATE_ALERT             0x40
-#define PT_STATE_GLOB_PAIRED       0x80
 #define PT_STATE_QUIT             0x100
-#define PT_STATE_ADDPAIR_REQ      0x200
-#define PT_STATE_ADDPAIR          0x400
 
 #define PT_DATA_TIMER_TIME 200
-
-//---- commands ----
-#define PT_CMD_START "start"
-#define PT_CMD_STOP "stop"
-#define PT_CMD_QUIT "quit"
-#define PT_CMD_ADDPAIR "addpair"
-#define PT_CMD_REMOVE "remove"
-#define PT_CMD_RESET "reset"
-#define PT_CMD_ERASE "erase"
-
-//---- indicated state strings ----
-#define PT_IND_CHECK "check"
-#define PT_IND_INIT "init"
-#define PT_IND_STARTED "started"
-#define PT_IND_STOPPED "stopped"
-#define PT_IND_ALERT "alert"
-
-//---- storing paired names ----
-#define PT_FLASH_RECORD_NAME 1
-#define PT_FLASH_MASTER_BASE PT_FLASH_RECORD_NAME + 1
-#define PT_NAME_READ 1000
-#define PT_NAME_EMPTY "empty"
-
-//---- encryption values ----
-#define PTBLE_CRYPT_KEY "0123456789abcdef"
-#define PTBLE_CRYPT_IV "fedcba9876543210"
 
 //#define PT_SAMPLE_DATA0 "01234567890123456789"
 //#define PT_SAMPLE_DATA0 "98765432109876543210"
@@ -85,17 +50,9 @@
 '//*****************************************************************************
 '// Global Variable Declarations
 '//*****************************************************************************
-dim charCtrl
-dim charInd
 dim charData
 dim ptState
 dim hConn
-dim _deviceName$
-dim _deviceIndex
-dim _isFirstInd
-
-dim _PTBLEKey$
-dim _PTBLEIv$
 
 dim _sampleData
 dim _dataToSend$
@@ -139,22 +96,6 @@ function addChar(mdVal as integer, byval chProp as integer, byref uuid$ as strin
   AssertResCode(rc, 8100)
 endfunc rc
 
-function _PTBLESaveName(byref name$ as string)
-  dim old$
-  dim rc
-
-  rc = NvRecordGet(PT_FLASH_RECORD_NAME, old$)
-  if (rc > 0) && (strcmp(old$, name$) == 0) then
-    DbgMsg("_PTBLESaveName: name <" + old$ + "> hasn't changed, no write.")
-    rc = PT_NAME_READ
-  else
-    rc = NvRecordSet(PT_FLASH_RECORD_NAME, name$)
-    if rc <= 0 then
-      DbgMsgVal("_PTBLESaveName: flash record write failed with: ", rc)
-    endif
-  endif
-endfunc rc
-
 function ptDoAction(byval state as integer) as integer
   dim rc
   dim attr$
@@ -181,37 +122,6 @@ function ptDoAction(byval state as integer) as integer
   endif
 endfunc rc
 
-function _PTBLEEncrypt(byref attr$, byref encrypted$) as integer
-  dim rc
-
-  // CBC mode = 0x200
-  rc = AesSetKeyIV(0x200, 16, _PTBLEKey$, _PTBLEIv$)
-  AssertResCode(rc, 10300)
-  rc = AesEncrypt(attr$, encrypted$)
-  AssertResCode(rc, 10301)
-endfunc rc
-
-function _PTBLEDecrypt(byref attr$, byref decrypted$) as integer
-  dim rc
-
-  // CBC mode = 0x200
-  DbgMsg("### encrypting with CBC, iv: " + _PTBLEIv$)
-  rc = AesSetKeyIV(0x200, 16, _PTBLEKey$, _PTBLEIv$)
-  AssertResCode(rc, 10400)
-  rc = AesDecrypt(attr$, decrypted$)
-  AssertResCode(rc, 10401)
-endfunc rc
-
-function _PTBLECutZeroes$(byref str$) as string
-  dim rc
-  dim tmp$ : tmp$ = "\00"
-
-  rc = strpos(str$, tmp$, 0)
-  if rc >= 0 then
-    tmp$ = left$(str$, rc)
-  endif
-endfunc tmp$
-
 sub PTBLEInit()
   dim rc
   dim attr$, enc$
@@ -222,18 +132,7 @@ sub PTBLEInit()
   _sampleData = 0
   _dataToSend$ = ""
   rc = StrFill(_dataToSend$, PT_SAMPLE_DATA0, PT_SAMPLE_DATA_SIZE)
-  _isFirstInd = 1
 
-  //---- Init encryption ----
-  _PTBLEKey$ = PTBLE_CRYPT_KEY
-  _PTBLEIv$ = PTBLE_CRYPT_IV
-
-  //------ get stored name ------
-  rc = NvRecordGet(PT_FLASH_RECORD_NAME, name$)
-  if (rc <= 0) || (strcmp(name$, "") == 0) then
-    DbgMsgVal("flash record not found: ", rc)
-    name$ = DEVICENAME
-  endif
   DbgMsg("BT name set to: " + name$)
 
   attr$ = ""
