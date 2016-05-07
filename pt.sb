@@ -10,14 +10,9 @@
 '//Set this to 0 to disable all debugging messages
 #define ENABLE_DEBUG_PRINTS                  1
 
-#define DEVICENAME                           "Sentra"
+#define DEVICENAME                           "Test"
 #define DEVICENAME_WRITABLE                  1
 #define APPEARANCE                           BLE_APPEARANCE_GENERIC_TAG
-#define MANF_NAME                            "Paragon International"
-#define MODELSTR                             "BL600"
-#define SERIALNUM                            "12345"
-#define HWREV                                "HwRev1.0"
-#define SWREV                                "SwRev0.1"
 
 '//Tx Power for the TX Service (Proximity Profile)
 #define TX_POWER_LEVEL                       4
@@ -72,7 +67,7 @@
 #define MAX_LTK_SIZE                         16
 
 '// Set this to non-zero to enable notiy on batt service
-#define BATT_NOTIFY                          1
+#define BATT_NOTIFY                          0
 '//#define BATT_INIT_LEVEL_PERC                 100
 
 '//This sets the pairing i/p capability using bonding
@@ -93,26 +88,22 @@ sub HandlerOnErr()
 endsub
 onerror next HandlerOnErr
 
+
 '//*****************************************************************************
 '// Library Import
 '//*****************************************************************************
 #include "tlib\pt.common.sblib"
 #include "tlib\debugging.routines.sblib"
-'#include "tlib\pt.led.sblib"
 #include "lib\ble.sblib"
 
 #include "lib\fast.slow.advert.mngr.sblib"
 #include "lib\advert.report.manager.sblib"
 
 #include "lib\security.manager.sblib"
-#include "lib\device.information.service.sblib"
 #include "lib\tx.power.service.sblib"
-#include "tlib\pt.battery.sblib"
 
 #include "tlib\pt.sblib"
 
-'Add services as appropriate
-'#include "lib\immediate.alert.service.sblib"
 
 '//*****************************************************************************
 '// Debugging resource after libs
@@ -140,6 +131,7 @@ dim ok$,er$
 dim msg$
 dim advFlags                '//value for flags AD
 
+
 '//*****************************************************************************
 '// Initialisse Global Variable
 '//*****************************************************************************
@@ -161,8 +153,6 @@ sub OnStartup()
   InitSecurityMngr(PAIRING_IOCAPABILITY, MIN_LTK_SIZE, MAX_LTK_SIZE)
   InitDisService()
 
-  PTBatteryInit(BATT_NOTIFY)
-'  PTLedInit()
   PTBLEInit()
 endsub
 
@@ -245,25 +235,6 @@ function OnUartCmd(stData$, datalen) as integer
   if strcmp(beg$, "q") == 0 then
     reset(0)
     exitfunc 0
-
-  //---- battery test ----
-  elseif strcmp(beg$, "bl ") == 0 then
-    StrShiftLeft(stData$, 3)
-    rc = StrValDec(stData$)
-    rc = PTBatterySetLevel(rc)
-
-  //---- led test ----
-'  elseif strcmp(beg$, "l1") == 0 then
-'    PTLedOn()
-'  elseif strcmp(beg$, "l0") == 0 then
-'    PTLedOff()
-'  elseif strcmp(beg$, "l5") == 0 then
-'    PTLedMS(500)
-
-  //---- battery test ----
-  elseif strcmp(beg$, "e") == 0 then
-    rc = ReadPwrSupplyMv()
-    DbgMsgVal("Battery power in mV: ", rc)
 
   //---- advertise test ----
   elseif strcmp(beg$, "a1") == 0 then
