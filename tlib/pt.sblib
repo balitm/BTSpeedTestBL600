@@ -24,21 +24,19 @@
 #define BLE_CHAR_PROPERTIES_RELIABLE_WRITE 0x80
 #define SERVICE_IND_UUID "965f6f0621984f4fa3334c5e0f238eb7"
 #define CHAR_DATA_UUID "89e63f0299324df191c7a574c880efbf"
-#define CHAR_SWD_UUID "d83a3a2d4568416d8b0bcbe8b866a795"
-#define CHAR_CTRL_UUID "677a18eedd544983a50a9872fc6e470c"
-#define CHAR_IND_UUID "975823dcd8fc4da282ffada38703c43d"
 
 #define PT_STATE_NONE              0x00
 #define PT_STATE_CONNECTED         0x01
 #define PT_STATE_QUIT             0x100
 
-#define PT_DATA_TIMER_TIME 200
+#define PT_DATA_TIMER_TIME 1000
 
-//#define PT_SAMPLE_DATA0 "01234567890123456789"
+#define PT_SAMPLE_DATA0 "01234567890123456789"
 //#define PT_SAMPLE_DATA0 "98765432109876543210"
-#define PT_SAMPLE_DATA0 48 // '0'
-#define PT_SAMPLE_DATA1 48 + 9 // '9'
+'#define PT_SAMPLE_DATA0 48 // '0'
+'#define PT_SAMPLE_DATA1 48 + 9 // '9'
 #define PT_SAMPLE_DATA_SIZE 20
+#define PT_SAMPLE_NUM 640
 
 #define BLE_NO_TX_BUFFERS 0x6803
 
@@ -56,6 +54,7 @@ dim hConn
 
 dim _sampleData
 dim _dataToSend$
+dim _chunkNum
 
 
 '//*****************************************************************************
@@ -111,38 +110,26 @@ function ptDoAction(byval state as integer) as integer
   AddLongUuid(attr$)
   AssertResCode(rc, 8807)
   InitAdvReports(BLE_DISCOVERABILITY_GENERAL)
-  if state & PT_STATE_GLOB_PAIRED then
-    DbgMsg("Ifinite advert.")
-    rc = SetAdvertToutS(0)
-    AssertResCodeVal(rc, 1, 8808)
-  else
-    DbgMsgVal("Set slow advert tout to: ", ADV_TIMEOUT_SLOW_MS)
-    rc = SetAdvertToutS(ADV_TIMEOUT_SLOW_MS)
-    AssertResCodeVal(rc, 1, 8809)
-  endif
+  DbgMsg("Ifinite advert.")
+  rc = SetAdvertToutS(0)
+  AssertResCodeVal(rc, 1, 8808)
 endfunc rc
 
 sub PTBLEInit()
   dim rc
   dim attr$, enc$
-  dim name$
+  dim name$: name$ = "DataTag"
 
   //---- clear global hConn  ----
   hConn = -1
   _sampleData = 0
   _dataToSend$ = ""
-  rc = StrFill(_dataToSend$, PT_SAMPLE_DATA0, PT_SAMPLE_DATA_SIZE)
 
-  DbgMsg("BT name set to: " + name$)
+'  rc = StrFill(_dataToSend$, PT_SAMPLE_DATA0, PT_SAMPLE_DATA_SIZE)
+  _dataToSend$ = PT_SAMPLE_DATA0
+  _chunkNum = PT_SAMPLE_NUM
 
-  attr$ = ""
-  if rc > 0 then
-    attr$ = PT_IND_STOPPED
-    ptState = PT_STATE_GLOB_PAIRED
-  else
-    attr$ = PT_IND_INIT
-    ptState = PT_STATE_NONE
-  endif
+  ptState = PT_STATE_NONE
   DbgMsgValH("Init: attr: " + attr$ + ", state code: ", ptState)
 
   dim hSvc  ' composite handle for the primary service.
@@ -163,30 +150,8 @@ sub PTBLEInit()
   AssertResCode(rc, 8001)
   DbgMsgVal2("Comitted SERVICE_IND_UUID: ", sUuid, hSvc)
 
-  //---- add ind char ----
-  mdVal = BleAttrMetadata(BLE_ATTR_ACCESS_OPEN, BLE_ATTR_ACCESS_NONE, MAX_HTM_LEN, 0, rc)
-  AssertResCode(rc, 8030)
-  uuid$ = CHAR_IND_UUID
-  rc = addChar(mdVal, BLE_CHAR_PROPERTIES_READ | BLE_CHAR_PROPERTIES_INDICATE, uuid$)
-  AssertResCode(rc, 8031)
-  attr$ = "indication"
-  rc = _PTBLEEncrypt(attr$, enc$)
-  AssertResCode(rc, 8032)
-  rc = BleCharCommit(hSvc, enc$, charInd)
-  AssertResCode(rc, 8033)
-
-  //---- add ctrl char ----
-  mdVal = BleAttrMetadata(BLE_ATTR_ACCESS_NONE, BLE_ATTR_ACCESS_OPEN, MAX_HTM_LEN, 0, rc)
-  AssertResCode(rc, 8010)
-  uuid$ = CHAR_CTRL_UUID
-  rc = addChar(mdVal, BLE_CHAR_PROPERTIES_WRITE, uuid$)
-  AssertResCode(rc, 8011)
-  attr$ = "ctrl"
-  rc = BleCharCommit(hSvc, attr$, charCtrl)
-  AssertResCode(rc, 8012)
-
   //---- add Data char ----
-  mdVal = BleAttrMetadata(BLE_ATTR_ACCESS_OPEN, BLE_ATTR_ACCESS_NONE, MAX_HTM_LEN, 0, rc)
+  mdVal = BleAttrMetadata(BLE_ATTR_ACCESS_OPEN, BLE_ATTR_ACCESS_NONE, 20, 0, rc)
   AssertResCode(rc, 8020)
   uuid$ = CHAR_DATA_UUID
   rc = addChar(mdVal, BLE_CHAR_PROPERTIES_READ | BLE_CHAR_PROPERTIES_NOTIFY, uuid$)
@@ -203,32 +168,19 @@ sub PTBLEInit()
   AssertResCode(rc, 8050)
 endsub
 
-function _PTBLEIndicateChar(byref attr$ as string) as integer
-  dim rc, val
-  dim tmp$, tmp1$, encrypted$ : tmp1$ = "  _"
-
-  DbgMsg("Indicator function is called.")
-  val = ptState & 0xff
-  rc = StrSetChr(tmp1$, val, 0)
-  AssertResCode(rc, 10301)
-  val = ptState >> 8
-  rc = StrSetChr(tmp1$, val, 1)
-  AssertResCode(rc, 10302)
-  sprint #tmp$, tmp1$;attr$
-  rc = _PTBLEEncrypt(tmp$, encrypted$)
-  DbgMsg(">>> " + attr$ + " is encrypted to: " + StrHexize$(encrypted$))
-  DbgMsgVal2H("connection, ind char: ", hConn, charInd)
-  rc = BleCharValueIndicate(charInd, encrypted$)
-  AssertResCode(rc, 10303)
-endfunc rc
-
 function _PTBLENotifyData() as integer
   dim rc ', count : count = 0
 '  dim str$
 
-  rc = BleCharValueNotify(charData, _dataToSend$)
-  AssertResCode(rc, 10313)
 '  DbgMsg("Notify function is called.")
+  while _chunkNum > 0
+    rc = BleCharValueNotify(charData, _dataToSend$)
+    _chunkNum = _chunkNum - 1
+    if rc == BLE_NO_TX_BUFFERS then
+'      rc = 0
+      break
+    endif
+  endwhile
 '  while strlen(_dataToSend$) > 0
 '    str$ = Left$(_dataToSend$, MAX_HTM_LEN)
 '    rc = BleCharValueNotify(charData, str$)
@@ -245,117 +197,6 @@ function _PTBLENotifyData() as integer
 '  DbgMsgVal("sent chunks: ", count)
 endfunc rc
 
-sub _PTBLEWhatchingStart()
-  dim tmp$
-  dim rc
-
-  ' start the move listener
-  DbgMsgValH("start cmd recved ", ptState)
-  ptState = ptState | PT_STATE_STARTED
-  tmp$ = PT_IND_STARTED
-  DbgMsgValH("trying to indicate char's value to " + tmp$ + ", handle: ", charInd)
-  rc = _PTBLEIndicateChar(tmp$)
-  AssertResCode(rc, 9901)
-endsub
-
-sub _PTBLEWhatchingStop()
-  dim tmp$
-  dim rc
-
-  ' stop the move listener
-  ptState = ptState & ~PT_STATE_STARTED
-  DbgMsgValH("stop cmd recved ", ptState)
-  tmp$ = PT_IND_STOPPED
-  DbgMsgValH("trying to indicate char's value to " + tmp$ + ", handle: ", charInd)
-  rc = _PTBLEIndicateChar(tmp$)
-  AssertResCode(rc, 9902)
-endsub
-
-function _PTBLEIsKnown(byref peer$) as integer
-  dim read$
-  dim rc, cmp : cmp = 1
-  dim index : index = PT_FLASH_MASTER_BASE - 1
-
-  do
-    index = index + 1
-    rc = NvRecordGet(index, read$)
-    if rc > 0 then
-      cmp = strcmp(read$, peer$)
-      DbgMsgVal("found: " + StrHexize$(read$) + " compared to: " + StrHexize$(peer$) + ", at: ", index)
-    else
-      DbgMsgVal("find read failed at: ", index)
-    endif
-  until cmp == 0 || rc <= 0
-  if cmp != 0 then
-    index = -index
-  endif
-endfunc index
-
-function _PTBLEFindEmpty() as integer
-  dim read$
-  dim rc, cmp : cmp = 1
-  dim index : index = PT_FLASH_MASTER_BASE - 1
-
-  do
-    index = index + 1
-    rc = NvRecordGet(index, read$)
-    if rc <= 0 && strcmp(read$, PT_NAME_EMPTY) == 0  then
-      DbgMsgVal2("Read error at index: ", index, rc)
-      continue
-    else
-      DbgMsgVal2("Record at index is long enough: ", index, rc)
-    endif
-  until rc <= 0
-endfunc index
-
-function _PTBLESaveDevice(byref device$) as integer
-  dim rc, index : index = _PTBLEFindEmpty()
-
-  DbgMsgVal(">>> Saving device: " + StrHexize$(device$) + " at: ", index)
-
-  if index < PT_FLASH_MASTER_BASE then
-    exitfunc -1
-  endif
-
-  DbgMsgVal("trying to write: " + StrHexize$(device$) + ", at: ", index)
-  rc = NvRecordSet(index, device$)
-  if rc <= 0 then
-    DbgMsgVal(">>> Saving master device failed, NvRecordSet: ", index)
-  endif
-endfunc index
-
-function _PTBLEDeleteDevice(byval index) as integer
-  dim empty$ : empty$ = PT_NAME_EMPTY
-
-  DbgMsgVal(">>>> Deleting device at: ", index)
-
-  if index < 0 then
-    exitfunc -1
-  endif
-
-  DbgMsgVal("trying to delete at: ", index)
-  index = NvRecordSet(index, empty$)
-  if index <= 0 then
-    DbgMsgVal(">>> Deleting paired device failed, NvRecordSet: ", index)
-  endif
-endfunc index
-
-function _PTBLEIndStrByState$() as string
-  dim str$
-
-  if !(ptState & PT_STATE_CHECKED) then
-    str$ = PT_IND_CHECK
-  elseif !(ptState & PT_STATE_PAIRED) then
-    str$ = PT_IND_INIT
-  elseif ptState & PT_STATE_STARTED then
-    str$ = PT_IND_STARTED
-  else
-    str$ = PT_IND_STOPPED
-  endif
-  DbgMsgValH("return state-to-ind stringt " + str$ + ", state: ", ptState)
-endfunc str$
-
-
 '//*****************************************************************************
 '// Handler definitions
 '//*****************************************************************************
@@ -368,206 +209,36 @@ sub _PTBLEOnBleMsg(byval nMsgId as integer, byval nCtx as integer)
     ptState = ptState | PT_STATE_CONNECTED
     DbgMsgVal2H("Connect handle, State code: ", nCtx, ptState)
     hConn = nCtx
-    PTBatteryOn()
 
   case BLE_EVBLEMSGID_DISCONNECT
     TimerCancel(PT_TIMER_TEST)
-    _isFirstInd = 1
-    PTBatteryOff()
-    ptState = ptState & ~(PT_STATE_CONNECTED | PT_STATE_PAIRED | PT_STATE_CHECKED | PT_STATE_INDICATED)
+    // _isFirstInd = 1
+    ptState = ptState & ~PT_STATE_CONNECTED
     DbgMsgValH("Disconnect: State code: ", ptState)
-    if ptState & PT_STATE_ADDPAIR_REQ then
-      ptState = (ptState & ~PT_STATE_ADDPAIR_REQ) | PT_STATE_ADDPAIR
-    elseif ptState & PT_STATE_ADDPAIR then
-      ptState = ptState & ~PT_STATE_ADDPAIR
-    endif
-    DbgMsgValH("Disconnect: State code: ", ptState)
-'    if ptState & PT_STATE_STARTED then
-'      DbgMsgValH("set back started state: ", ptState)
-'      attr$ = PT_IND_STARTED
-'    else
-'      DbgMsgValH("set back stopped state: ", ptState)
-'      attr$ = PT_IND_STOPPED
-'    endif
-'    rc = _PTBLEEncrypt(attr$, enc$)
-'    rc = BleCharValueWrite(charInd, enc$)
-'    AssertResCode(rc, 8121)
-'    if ptState & PT_STATE_ALERT then
-'      ptState = ptState & ~PT_STATE_ALERT
-'      DbgMsgValH("### Unexpected disconnect after alert: State code: ", ptState)
-'    endif
-'    rc = ptDoAction(ptState)
-'    DbgMsgVal("attrs set, rc: ", rc)
     if ptState & PT_STATE_QUIT then
       reset(0)
     else
       hConn = -1
       rc = StartAdverts(-1)
       AssertResCode(rc, 8181)
-      //---- reset IV ----
-      _PTBLEIv$ = PTBLE_CRYPT_IV
-      DbgMsgVal("adverting started, iv set to: " + _PTBLEIv$ + ", rc: ", rc)
+      DbgMsgVal("adverting started, rc: ", rc)
     endif
   case else
     '//Do nothing
   endselect
 endsub
 
-function _PTHandlerBleCharVal(byval charHandle as integer, byval offset, byval len) as integer
-  dim rc, param
-  dim at$, tmp$
 
-  //---- check char ----
-  if charHandle != charCtrl then
-    DbgMsgVal2("Other char modified?!: ", charCtrl, charHandle)
-    rc = BleDisconnect(hConn)
-  endif
-
-  DbgMsgValH("state: ", ptState)
-  rc = BleCharValueRead(charHandle, tmp$)
-  rc = _PTBLEDecrypt(tmp$, at$)
-  DbgMsgVal("Recved encrypted: " + StrHexize$(tmp$) + "\ndecrypted: " + StrHexize$(at$) + ",\nlength: ", strlen(at$))
-
-  if !(ptState & PT_STATE_CHECKED) then
-    ptState = ptState | PT_STATE_CHECKED
-    _PTBLEIv$ = at$
-    //---- check if peer is known ----
-    _deviceIndex = _PTBLEIsKnown(at$)
-    if _deviceIndex > 0 then
-      AssertResCodeVal(ptState & PT_STATE_GLOB_PAIRED, PT_STATE_GLOB_PAIRED, 9990)
-      ptState = ptState | PT_STATE_PAIRED
-      DbgMsgValH("Known master, state set to: ", ptState)
-      _deviceName$ = ""
-'      TimerStart(PT_TIMER_TEST, PT_DATA_TIMER_TIME, 1)
-    else
-      DbgMsgValH("Unknown master, state: ", ptState)
-      tmp$ = StrHexize$(at$)
-      DbgMsg("Hexized id: " + tmp$)
-      //---- learn device unique id of master ----
-      _deviceName$ = at$
-    endif
-    tmp$ = BleGetDeviceName$()
-    rc = _PTBLEIndicateChar(tmp$)
-    AssertResCode(rc, 10501)
-  elseif !(ptState & PT_STATE_PAIRED) then
-    ptState = (ptState & ~(PT_STATE_ADDPAIR_REQ | PT_STATE_ADDPAIR)) | PT_STATE_NAMED | PT_STATE_PAIRED | PT_STATE_GLOB_PAIRED
-    at$ = _PTBLECutZeroes$(at$)
-    rc = BleGapSvcInit(at$,DEVICENAME_WRITABLE,APPEARANCE,MIN_CONN_INTERVAL,MAX_CONN_INTERVAL,CONN_SUP_TIMEOUT,SLAVE_LATENCY)
-    AssertResCode(rc, 9900)
-    tmp$ = BleGetDeviceName$()       // device name to used in advertisements
-    DbgMsg("New recved name: " + at$ + ", updated: " + tmp$)
-    if strcmp(tmp$, at$) != 0 then
-      DbgMsg("names aren't matching.")
-    endif
-    rc = _PTBLESaveName(at$)
-    if rc > 0 then
-      DbgMsg("Saving device: " + StrHexize$(_deviceName$))
-      if strlen(_deviceName$) != 0 then
-        //---- store unique id of paired device ----
-        _deviceIndex = _PTBLESaveDevice(_deviceName$)
-        _deviceName$ = ""
-      endif
-    else
-      DbgMsgVal("flash record read/write failed with: ", rc)
-    endif
-  else
-    at$ = _PTBLECutZeroes$(at$)
-    tmp$ = " "
-    rc = strPos(at$, tmp$, 0)
-    if -1 != rc then
-      DbgMsgVal(">>>> Found <" + tmp$ + "> in " + at$ + "at pos: ", rc)
-      tmp$ = at$
-      at$ = strSplitLeft$(tmp$, rc)
-      param = strValDec(tmp$)
-      DbgMsgVal(">>>> Splitted to <" + at$ + "> and <" + tmp$ + ">, param: ", param)
-    else
-      DbgMsg(">>>> Not found<" + tmp$ + "> in " + at$)
-      param = -1
-    endif
-    if strcmp(at$, PT_CMD_START) == 0 then
-      _PTBLEWhatchingStart()
-    elseif strcmp(at$, PT_CMD_STOP) == 0 then
-      _PTBLEWhatchingStop()
-    elseif strcmp(at$, PT_CMD_QUIT) == 0 then
-      ptState = ptState | PT_STATE_QUIT
-      rc = BleDisconnect(hConn)
-      if rc != 0 then
-        //---- hard quit ----
-        reset(0)
-      endif
-    elseif strcmp(at$, PT_CMD_ADDPAIR) == 0 then
-      '_PTBLEWhatchingStop()
-      ptState = ptState | PT_STATE_ADDPAIR_REQ
-      rc = BleDisconnect(hConn)
-      AssertResCode(rc, 10502)
-    elseif strcmp(at$, PT_CMD_REMOVE) == 0 then
-      rc = _PTBLEDeleteDevice(_deviceIndex)
-      _deviceIndex = -1
-      ptState = ptState | PT_STATE_QUIT
-      rc = BleDisconnect(hConn)
-    elseif strcmp(at$, PT_CMD_RESET) == 0 then
-      DbgMsg("erasing pairing data: " + at$)
-      BleBondMngrErase(0)
-      if sysinfo(2009) != 0 then
-        DbgMsg("### why not???")
-      endif
-      //---- hard quit ----
-      reset(0)
-    elseif strcmp(at$, PT_CMD_ERASE) == 0 then
-      DbgMsg("disconnect then erase file system and reboot.")
-      rc = BleDisconnect(hConn)
-      rc = EraseFileSystem(1)
-    else
-      DbgMsg("### undefined command received: " + at$)
-    endif
-  endif
-endfunc 1
-
-// Handler to service characteristic value confirmation from gatt client.
-function _PTHandlerCharHvc(byval hChar as integer) as integer
-  if hChar == charInd then
-    DbgMsgValH(">>> Got confirmation to recent indication in state: ", ptState)
-    if ptState & PT_STATE_ALERT then
-      ptState = ptState & ~PT_STATE_ALERT
-    endif
-  else
-    DbgMsgVal2(">>> Got confirmation to some other indication: ", hChar, charInd)
-  endif
-endfunc 1
 
 // Handler to service writes to CCCD which tells us we can indicate or not.
 function _PTHandlerCharCccd(byval hChar as integer, byval val as integer) as integer
-  if hChar == charInd then
-    if _isFirstInd == 1 then
-      _isFirstInd = 0
-      DbgMsg("#### Skip 1st indication message of indChar.")
-      exitfunc 1
-    endif
-    if val != 0 then
-      dim attr$
-      dim rc
-
-      DbgMsgVal(">>> Indications have been enabled by client: ", val)
-      if ptState & PT_STATE_INDICATED then
-        DbgMsg("#### !!!! E: Skip another indication.")
-      else
-        ptState = ptState | PT_STATE_INDICATED
-        attr$ = _PTBLEIndStrByState$()
-        DbgMsgValH("set <" + attr$ + "> state: ", ptState)
-        rc = _PTBLEIndicateChar(attr$)
-        AssertResCode(rc, 8101)
-      endif
-    else
-      DbgMsgVal(">>> Indications have been disabled by client: ", val)
-      ptState = ptState & ~PT_STATE_INDICATED
-    endif
-  elseif hChar == charData then
+  if hChar == charData then
     DbgMsgVal(">>> Notify for Data char is enabled: ", val)
     if val != 0 then
-'      TimerStart(PT_TIMER_TEST, PT_DATA_TIMER_TIME, 1)
+      TimerStart(PT_TIMER_TEST, PT_DATA_TIMER_TIME, 1)
     endif
   else
-    DbgMsgVal2("This is for some other characteristic: ", hChar, charInd)
+    DbgMsgVal2("This is for some other characteristic: ", hChar, charData)
   endif
 endfunc 1
 
@@ -586,7 +257,8 @@ function _PTTestTimer()
   dim attr$
   dim rc
 
-'  DbgMsg("#### Notify test timer called")
+'  DbgMsgVal2("#### Notify test timer called, dnum: , dlen: ", _chunkNum, strlen(_dataToSend$))
+  _chunkNum = PT_SAMPLE_NUM
 '  if _sampleData != PT_SAMPLE_DATA0 then
 '    _sampleData = PT_SAMPLE_DATA0
 '  else
@@ -602,7 +274,6 @@ endfunc 1
 '//*****************************************************************************
 '// Other initialisations
 '//*****************************************************************************
-OnEvent EVCHARVAL   call _PTHandlerBleCharVal
 OnEvent EVCHARCCCD  call _PTHandlerCharCccd
-OnEvent EVCHARHVC   call _PTHandlerCharHvc
+OnEvent EVNOTIFYBUF call _PTHandlerNotifyBuf
 OnEvent EVTMR2      call _PTTestTimer

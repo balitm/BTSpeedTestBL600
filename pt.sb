@@ -150,9 +150,6 @@ advFlags = DISCOVERY_MODE    '//can be changed via 'fg' command
 '// the file
 '//=============================================================================
 sub OnStartup()
-  InitSecurityMngr(PAIRING_IOCAPABILITY, MIN_LTK_SIZE, MAX_LTK_SIZE)
-  InitDisService()
-
   PTBLEInit()
 endsub
 
@@ -333,13 +330,7 @@ function HandlerBlrAdvTimOut() as integer
 
   DbgMsgVal("Advert stopped via timeout, phase: ", advPhase)
   if AdvMngrOnAdvTimeOut() == 0 then
-    if !(ptState & PT_STATE_GLOB_PAIRED) then
-      DbgMsg("Not paired yet, stop advertising.")
-      rc = StopAdverts()
-      exitfunc 1
-    else
-      rc = StartAdverts(-1)
-    endif
+    rc = StartAdverts(-1)
   endif
 endfunc 1
 
