@@ -13,6 +13,11 @@
 #define DEVICENAME                           "Test"
 #define DEVICENAME_WRITABLE                  1
 #define APPEARANCE                           BLE_APPEARANCE_GENERIC_TAG
+#define MANF_NAME                            "Paragon International"
+#define MODELSTR                             "BL600"
+#define SERIALNUM                            "12345"
+#define HWREV                                "HwRev1.0"
+#define SWREV                                "SwRev0.1"
 
 '//Tx Power for the TX Service (Proximity Profile)
 #define TX_POWER_LEVEL                       4
@@ -100,6 +105,7 @@ onerror next HandlerOnErr
 #include "lib\advert.report.manager.sblib"
 
 #include "lib\security.manager.sblib"
+#include "lib\device.information.service.sblib"
 #include "lib\tx.power.service.sblib"
 
 #include "tlib\pt.sblib"
@@ -150,6 +156,7 @@ advFlags = DISCOVERY_MODE    '//can be changed via 'fg' command
 '// the file
 '//=============================================================================
 sub OnStartup()
+  InitDisService()
   PTBLEInit()
 endsub
 
@@ -327,7 +334,6 @@ endfunc 1
 '//=============================================================================
 function HandlerBlrAdvTimOut() as integer
   dim rc
-
   DbgMsgVal("Advert stopped via timeout, phase: ", advPhase)
   if AdvMngrOnAdvTimeOut() == 0 then
     rc = StartAdverts(-1)
