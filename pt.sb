@@ -43,14 +43,25 @@
 
 
 '// Minimum acceptable connection interval (0.5 seconds)
-#define MIN_CONN_INTERVAL                    80000
+'#define MIN_CONN_INTERVAL                    80000
 '// Maximum acceptable connection interval (1 second).
-#define MAX_CONN_INTERVAL                    100000
+'#define MAX_CONN_INTERVAL                    100000
 '// Slave latency -- number of conn events that can be missed
 '// Effective Conn interval will be (SLAVE_LATENCY+1)*ACTUAL_CONN_INTERVAL
-#define SLAVE_LATENCY                        2
+'#define SLAVE_LATENCY                        2
 '// Connection supervisory timeout (4 seconds) - max 32 seconds
-#define CONN_SUP_TIMEOUT                     4000000
+'#define CONN_SUP_TIMEOUT                     4000000
+
+'// Minimum acceptable connection interval (0.5 seconds)
+#define MIN_CONN_INTERVAL                    7500
+'// Maximum acceptable connection interval (1 second).
+#define MAX_CONN_INTERVAL                    10000
+'// Slave latency -- number of conn events that can be missed
+'// Effective Conn interval will be (SLAVE_LATENCY+1)*ACTUAL_CONN_INTERVAL
+#define SLAVE_LATENCY                        0
+'// Connection supervisory timeout (4 seconds) - max 32 seconds
+#define CONN_SUP_TIMEOUT                     100000
+
 '//DiscoverableMode, set to BLE_DISCOVERABILITY_xxx
 #define DISCOVERY_MODE                       BLE_DISCOVERABILITY_GENERAL
 #define MAX_DEVNAME_CHRS                     0
