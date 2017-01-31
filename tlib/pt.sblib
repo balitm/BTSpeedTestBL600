@@ -32,13 +32,10 @@
 #define PT_DATA_TIMER_TIME 1000
 
 #define PT_SAMPLE_DATA0 "01234567890123456789"
-//#define PT_SAMPLE_DATA0 "98765432109876543210"
-'#define PT_SAMPLE_DATA0 48 // '0'
-'#define PT_SAMPLE_DATA1 48 + 9 // '9'
 #define PT_SAMPLE_DATA_SIZE 20
 #define PT_SAMPLE_NUM 640
 
-#define BLE_NO_TX_BUFFERS 0x6803
+#define BLE_NO_TX_BUFFERS 0x6804
 
 
 '//*****************************************************************************
@@ -123,26 +120,22 @@ sub PTBLEInit()
   //---- clear global hConn  ----
   hConn = -1
   _sampleData = 0
-  _dataToSend$ = ""
-
-'  rc = StrFill(_dataToSend$, PT_SAMPLE_DATA0, PT_SAMPLE_DATA_SIZE)
   _dataToSend$ = PT_SAMPLE_DATA0
   _chunkNum = PT_SAMPLE_NUM
-
   ptState = PT_STATE_NONE
   DbgMsgValH("Init: attr: " + attr$ + ", state code: ", ptState)
 
   dim hSvc  ' composite handle for the primary service.
   dim sUuid
   dim uuid$
-  dim mdVal   '// metadata for value attribute of Characteristic
+  dim mdVal ' metadata for value attribute of Characteristic
 
-  ' Create Ind service
+  //---- Create Ind service ----
   uuid$ = SERVICE_IND_UUID
   uuid$ = StrDehexize$(uuid$)
   sUuid = BleHandleUuid128(uuid$)
 
-  '---- Create Indication service -----
+  //---- Create Indication service -----
   if sUuid == 0 then
     DbgMsg("Failed to create a handle")
   endif
@@ -169,32 +162,16 @@ sub PTBLEInit()
 endsub
 
 function _PTBLENotifyData() as integer
-  dim rc ', count : count = 0
-'  dim str$
+  dim rc
 
-'  DbgMsg("Notify function is called.")
   while _chunkNum > 0
     rc = BleCharValueNotify(charData, _dataToSend$)
-    _chunkNum = _chunkNum - 1
     if rc == BLE_NO_TX_BUFFERS then
-'      rc = 0
+      rc = 0
       break
     endif
+    _chunkNum = _chunkNum - 1
   endwhile
-'  while strlen(_dataToSend$) > 0
-'    str$ = Left$(_dataToSend$, MAX_HTM_LEN)
-'    rc = BleCharValueNotify(charData, str$)
-'    if rc == BLE_NO_TX_BUFFERS then
-'      break
-'    endif
-'    StrShiftLeft(_dataToSend$, MAX_HTM_LEN)
-'    AssertResCode(rc, 10313)
-'    count = count + 1
-'  endwhile
-'  if rc == 0 then
-'    OnEvent EVNOTIFYBUF disable
-'  endif
-'  DbgMsgVal("sent chunks: ", count)
 endfunc rc
 
 '//*****************************************************************************
@@ -228,8 +205,6 @@ sub _PTBLEOnBleMsg(byval nMsgId as integer, byval nCtx as integer)
   endselect
 endsub
 
-
-
 // Handler to service writes to CCCD which tells us we can indicate or not.
 function _PTHandlerCharCccd(byval hChar as integer, byval val as integer) as integer
   if hChar == charData then
@@ -246,9 +221,8 @@ endfunc 1
 function _PTHandlerNotifyBuf()
   dim rc
 
-'  DbgMsg("#### Notify buf handler is called.")
   rc = _PTBLENotifyData()
-'  AssertResCode(rc, 9997)
+  AssertResCode(rc, 9997)
 endfunc 1
 
 
@@ -257,18 +231,9 @@ function _PTTestTimer()
   dim attr$
   dim rc
 
-'  DbgMsgVal2("#### Notify test timer called, dnum: , dlen: ", _chunkNum, strlen(_dataToSend$))
   _chunkNum = PT_SAMPLE_NUM
-'  if _sampleData != PT_SAMPLE_DATA0 then
-'    _sampleData = PT_SAMPLE_DATA0
-'  else
-'    _sampleData = PT_SAMPLE_DATA1
-'  endif
-'  rc = StrFill(_dataToSend$, _sampleData, PT_SAMPLE_DATA_SIZE)
-'  AssertResCodeVal(rc, PT_SAMPLE_DATA_SIZE, 9998)
-'  OnEvent EVNOTIFYBUF call _PTHandlerNotifyBuf
   rc = _PTBLENotifyData()
-'  AssertResCode(rc, 9999)
+  AssertResCode(rc, 9999)
 endfunc 1
 
 '//*****************************************************************************
